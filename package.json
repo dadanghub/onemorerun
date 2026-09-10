@@ -10,8 +10,9 @@
   "scripts": {
     "dev:game": "npm run dev --workspace=@omr/game",
     "dev:server": "npm run dev --workspace=@omr/server",
-    "build:shared": "npm run build --workspace=@omr/shared",
+    "build:shared": "npm run build --workspace=@omr/shared && npm run build --workspace=@omr/game-engine",
     "build:contracts": "npm run build --workspace=@omr/contracts",
+    "build": "npm run build:shared && npm run build --workspace=@omr/game",
     "test:server": "npm run test --workspace=@omr/server"
   }
 }
