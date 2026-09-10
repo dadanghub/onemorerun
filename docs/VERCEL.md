@@ -28,7 +28,7 @@ repo and the `vercel.json` does the rest.
 
 ```json
 {
-  "buildCommand":   "npm run build:shared && NODE_OPTIONS='--max-old-space-size=4096' npm run build --workspace=@omr/game",
+  "buildCommand":   "npm --workspace=@omr/shared run build && npm --workspace=@omr/game-engine run build && cd apps/game && NODE_OPTIONS='--max-old-space-size=4096' npm run build",
   "installCommand": "npm install --workspaces --include-workspace-root",
   "outputDirectory": "apps/game/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
@@ -39,9 +39,20 @@ repo and the `vercel.json` does the rest.
    with hoisting disabled, so each app's `node_modules/@omr/*` becomes a
    proper symlink to the matching package in `packages/`. This is what makes
    `import { … } from '@omr/shared'` work in the game.
-2. **buildCommand** — first builds `@omr/shared` and `@omr/game-engine`
-   into their `dist/` folders (this is where the `.d.ts` files come from
-   that the game typechecks against), then builds the game.
+2. **buildCommand** — three steps chained with `&&`:
+   - `npm --workspace=@omr/shared run build` — explicitly targets the
+     shared package by its workspace name. The `--workspace=` flag is
+     **required** because after `npm install --workspaces`, any
+     `npm run <script>` is interpreted relative to the current
+     workspace's `package.json` — a bare `npm run build:shared` from the
+     root or from inside `apps/game` would fail with
+     `Missing script: "build:shared"`.
+   - `npm --workspace=@omr/game-engine run build` — same pattern for the
+     game-engine package.
+   - `cd apps/game && NODE_OPTIONS='--max-old-space-size=4096' npm run build`
+     — switches into the game workspace and runs its own `build` script
+     (`tsc --noEmit && vite build`) with 4 GB headroom for the Vite
+     bundler.
 3. **outputDirectory** — Vite's default build output (`dist/`) lives in
    `apps/game/dist`.
 4. **rewrites** — SPA fallback so client-side routes and direct-link
@@ -61,9 +72,29 @@ npm run build --workspace=@omr/game   # typecheck + vite build
 ### "Cannot find module '@omr/shared'"
 
 The shared packages weren't built before the game was. The
-`buildCommand` in `vercel.json` runs `npm run build:shared` first
+`buildCommand` in `vercel.json` runs the shared builds first
 exactly to avoid this. If you override the build command in the
 Vercel UI, make sure the shared packages still build first.
+
+### "Missing script: build:shared" with `workspace @omr/game@0.1.0`
+
+After `npm install --workspaces`, npm's CLI interprets `npm run`
+relative to whichever workspace you're "in" — and a bare
+`npm run build:shared` then looks for the script in
+`apps/game/package.json`, where it doesn't exist. The fix is to
+**always target a workspace explicitly** when running root-level
+scripts from a chain:
+
+```bash
+# ❌ fails — npm looks inside the current workspace
+npm run build:shared
+
+# ✅ works — npm jumps to the named workspace
+npm --workspace=@omr/shared run build
+npm --workspace=@omr/game-engine run build
+```
+
+This is what `vercel.json` does.
 
 ### "JavaScript heap out of memory" during `vite build`
 

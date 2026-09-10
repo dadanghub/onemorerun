@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build:shared && NODE_OPTIONS='--max-old-space-size=4096' npm run build --workspace=@omr/game",
+  "buildCommand": "npm --workspace=@omr/shared run build && npm --workspace=@omr/game-engine run build && cd apps/game && NODE_OPTIONS='--max-old-space-size=4096' npm run build",
   "installCommand": "npm install --workspaces --include-workspace-root",
   "outputDirectory": "apps/game/dist",
   "framework": "vite",
