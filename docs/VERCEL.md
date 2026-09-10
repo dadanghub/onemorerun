@@ -28,7 +28,7 @@ repo and the `vercel.json` does the rest.
 
 ```json
 {
-  "buildCommand":   "npm --workspace=@omr/shared run build && npm --workspace=@omr/game-engine run build && cd apps/game && NODE_OPTIONS='--max-old-space-size=4096' npm run build",
+  "buildCommand":   "npm --workspace=@omr/shared run build && npm --workspace=@omr/game-engine run build && npm --workspace=@omr/game run build",
   "installCommand": "npm install --workspaces --include-workspace-root",
   "outputDirectory": "apps/game/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
@@ -39,20 +39,16 @@ repo and the `vercel.json` does the rest.
    with hoisting disabled, so each app's `node_modules/@omr/*` becomes a
    proper symlink to the matching package in `packages/`. This is what makes
    `import { … } from '@omr/shared'` work in the game.
-2. **buildCommand** — three steps chained with `&&`:
-   - `npm --workspace=@omr/shared run build` — explicitly targets the
-     shared package by its workspace name. The `--workspace=` flag is
-     **required** because after `npm install --workspaces`, any
-     `npm run <script>` is interpreted relative to the current
-     workspace's `package.json` — a bare `npm run build:shared` from the
-     root or from inside `apps/game` would fail with
-     `Missing script: "build:shared"`.
-   - `npm --workspace=@omr/game-engine run build` — same pattern for the
-     game-engine package.
-   - `cd apps/game && NODE_OPTIONS='--max-old-space-size=4096' npm run build`
-     — switches into the game workspace and runs its own `build` script
-     (`tsc --noEmit && vite build`) with 4 GB headroom for the Vite
-     bundler.
+2. **buildCommand** — three `npm --workspace=<name> run build` calls chained
+   with `&&`. Every step is **workspace-explicit**, so it works regardless
+   of what the current working directory is:
+   - `npm --workspace=@omr/shared run build` — builds shared types
+   - `npm --workspace=@omr/game-engine run build` — builds game engine
+   - `npm --workspace=@omr/game run build` — typechecks + Vite builds the
+     game. The Vite memory bump (`NODE_OPTIONS='--max-old-space-size=4096'`)
+     is baked into `apps/game/package.json`'s `build` script so the cross-
+     platform inline env-var approach (which doesn't survive
+     `npm --workspace=` indirection) doesn't matter.
 3. **outputDirectory** — Vite's default build output (`dist/`) lives in
    `apps/game/dist`.
 4. **rewrites** — SPA fallback so client-side routes and direct-link
@@ -95,6 +91,25 @@ npm --workspace=@omr/game-engine run build
 ```
 
 This is what `vercel.json` does.
+
+### "cd: apps/game: No such file or directory" mid-build
+
+When Vercel runs `npm --workspace=@omr/X run build`, it then
+executes the build inside `packages/X/`. A subsequent
+`cd apps/game` in the same `&&`-chained command **fails** because
+the relative path resolves against `packages/X/`, not the repo
+root. The fix is to never chain a `cd` after a
+`npm --workspace=` invocation — invoke the next workspace directly:
+
+```bash
+# ❌ fails — cwd is now packages/shared, apps/game doesn't exist
+npm --workspace=@omr/shared run build && cd apps/game && npm run build
+
+# ✅ works — every step is workspace-explicit
+npm --workspace=@omr/shared run build && \
+  npm --workspace=@omr/game-engine run build && \
+  npm --workspace=@omr/game run build
+```
 
 ### "JavaScript heap out of memory" during `vite build`
 
