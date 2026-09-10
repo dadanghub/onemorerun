@@ -49,10 +49,19 @@ repo and the `vercel.json` does the rest.
      is baked into `apps/game/package.json`'s `build` script so the cross-
      platform inline env-var approach (which doesn't survive
      `npm --workspace=` indirection) doesn't matter.
-3. **outputDirectory** — Vite's default build output (`dist/`) lives in
-   `apps/game/dist`.
+3. **outputDirectory** — `"dist"`. Note this is just `dist`, not
+   `apps/game/dist`. Vercel evaluates `outputDirectory` relative to
+   **the final CWD of the build command**, not the project root. After
+   `npm --workspace=@omr/game run build`, the shell's CWD is
+   `apps/game/`, so Vite's `dist/` output is at `apps/game/dist/` and
+   Vercel finds it via the relative path `dist`. If you set
+   `outputDirectory: "apps/game/dist"` instead, Vercel will look for
+   `apps/game/apps/game/dist` and fail with
+   `No Output Directory named "dist" found`.
 4. **rewrites** — SPA fallback so client-side routes and direct-link
-   refreshes work.
+   refreshes work. The `rewrites` are evaluated by Vercel **after**
+   the static assets are served, so they're relative to the
+   project's URL space, not the file system.
 
 ## Local reproduction
 
@@ -109,6 +118,22 @@ npm --workspace=@omr/shared run build && cd apps/game && npm run build
 npm --workspace=@omr/shared run build && \
   npm --workspace=@omr/game-engine run build && \
   npm --workspace=@omr/game run build
+```
+
+### "No Output Directory named 'dist' found after the Build completed"
+
+The build itself ran fine (Vite wrote `dist/index.html`, etc.) but
+Vercel can't find the output. Vercel evaluates `outputDirectory`
+**relative to the final CWD of the build command**, not the repo
+root. After `npm --workspace=@omr/game run build`, the final CWD is
+`apps/game/`, so:
+
+```json
+// ❌ fails — Vercel looks for apps/game/apps/game/dist
+"outputDirectory": "apps/game/dist"
+
+// ✅ works — Vercel looks for apps/game/dist, where Vite wrote it
+"outputDirectory": "dist"
 ```
 
 ### "JavaScript heap out of memory" during `vite build`
